@@ -229,6 +229,8 @@ function App() {
   const [showPwaDebug, setShowPwaDebug] = useState(false)
   const [swStatus, setSwStatus] = useState('checking')
   const [manifestStatus, setManifestStatus] = useState('checking')
+  const [realtimePartialText, setRealtimePartialText] = useState('')
+  const [recentCommittedText, setRecentCommittedText] = useState('')
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
@@ -239,6 +241,7 @@ function App() {
   const realtimeBaseTextRef = useRef('')
   const realtimeCommittedRef = useRef('')
   const stoppingLocalRef = useRef(false)
+  const recentCommittedTimerRef = useRef<number | null>(null)
   const stoppingRealtimeRef = useRef(false)
   const stoppingBatchRef = useRef(false)
   const scribeDisconnectRef = useRef<() => void>(() => undefined)
@@ -314,17 +317,30 @@ function App() {
       setStatus('listening')
       setError('')
       setNotice('')
+      setRealtimePartialText('')
+      setRecentCommittedText('')
     },
     onDisconnect: () => {
       setStatus((current) => (current === 'error' || current === 'processing' || current === 'post-processing' ? current : 'idle'))
       stoppingRealtimeRef.current = false
+      setRealtimePartialText('')
+      setRecentCommittedText('')
     },
     onPartialTranscript: ({ text: partial }) => {
+      setRealtimePartialText(partial.trim())
       const combined = `${realtimeCommittedRef.current} ${partial}`.trim()
       setText(realtimeBaseTextRef.current ? `${realtimeBaseTextRef.current} ${combined}`.trim() : combined)
     },
     onCommittedTranscript: ({ text: committed }) => {
-      realtimeCommittedRef.current = `${realtimeCommittedRef.current} ${committed}`.trim()
+      const committedChunk = committed.trim()
+      realtimeCommittedRef.current = `${realtimeCommittedRef.current} ${committedChunk}`.trim()
+      setRealtimePartialText('')
+      setRecentCommittedText(committedChunk)
+      if (recentCommittedTimerRef.current !== null) window.clearTimeout(recentCommittedTimerRef.current)
+      recentCommittedTimerRef.current = window.setTimeout(() => {
+        setRecentCommittedText('')
+        recentCommittedTimerRef.current = null
+      }, 1400)
       const combined = realtimeCommittedRef.current.trim()
       setText(realtimeBaseTextRef.current ? `${realtimeBaseTextRef.current} ${combined}`.trim() : combined)
     },
@@ -447,6 +463,12 @@ function App() {
       realtimeBaseTextRef.current = text
       realtimeCommittedRef.current = ''
       scribe.clearTranscripts()
+      setRealtimePartialText('')
+      setRecentCommittedText('')
+      if (recentCommittedTimerRef.current !== null) {
+        window.clearTimeout(recentCommittedTimerRef.current)
+        recentCommittedTimerRef.current = null
+      }
       const token = await fetchRealtimeToken(apiKey.trim())
       await scribe.connect({
         token,
@@ -674,9 +696,16 @@ function App() {
       recognitionRef.current?.stop()
       if (recorderRef.current && recorderRef.current.state !== 'inactive') recorderRef.current.stop()
       streamRef.current?.getTracks().forEach((track) => track.stop())
+      if (recentCommittedTimerRef.current !== null) window.clearTimeout(recentCommittedTimerRef.current)
       scribeDisconnectRef.current()
     }
   }, [])
+
+  const committedPreviewText = realtimeCommittedRef.current.trim()
+  const hasRecentCommitted = Boolean(recentCommittedText) && committedPreviewText.endsWith(recentCommittedText)
+  const committedStableText = hasRecentCommitted
+    ? committedPreviewText.slice(0, committedPreviewText.length - recentCommittedText.length).trimEnd()
+    : committedPreviewText
 
   if (!settingsLoaded) {
     return <div className="app-shell"><div className="card"><h1>Loading...</h1></div></div>
@@ -730,6 +759,18 @@ function App() {
           <label>
             <span>Transcript</span>
             <textarea value={text} onChange={(event) => setText(event.target.value)} rows={compactMode ? 4 : 10} placeholder="点 Start 或用快捷键开始说话。" />
+            {mode === 'elevenlabs-realtime' && (realtimeCommittedRef.current || realtimePartialText) ? (
+              <div className="realtime-preview" aria-live="polite">
+                <span className="realtime-preview-label">Realtime preview</span>
+                <div className="realtime-preview-content">
+                  {realtimeBaseTextRef.current ? <span>{realtimeBaseTextRef.current} </span> : null}
+                  {committedStableText ? <span>{committedStableText} </span> : null}
+                  {hasRecentCommitted ? <span className="realtime-committed-flash">{recentCommittedText}</span> : null}
+                  {hasRecentCommitted && realtimePartialText ? <span> </span> : null}
+                  {realtimePartialText ? <span className="realtime-partial">{realtimePartialText}</span> : null}
+                </div>
+              </div>
+            ) : null}
           </label>
 
           <label>
