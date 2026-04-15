@@ -1,0 +1,7 @@
+:5173 {
+    root * /home/shujakuin/app/web-dictation-prototype/dist
+    encode zstd gzip
+    try_files {path} /index.html
+    file_server
+    header Cache-Control "no-store"
+}
