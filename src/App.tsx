@@ -233,6 +233,8 @@ function App() {
   const [recentCommittedText, setRecentCommittedText] = useState('')
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
+  const transcriptTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const transcriptHighlightRef = useRef<HTMLDivElement | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -707,6 +709,29 @@ function App() {
     ? committedPreviewText.slice(0, committedPreviewText.length - recentCommittedText.length).trimEnd()
     : committedPreviewText
 
+  const isRealtimeHighlightActive = mode === 'elevenlabs-realtime' && Boolean(realtimeCommittedRef.current || realtimePartialText)
+
+  const syncTranscriptHighlightScroll = useCallback(() => {
+    if (!transcriptTextareaRef.current || !transcriptHighlightRef.current) return
+    transcriptHighlightRef.current.scrollTop = transcriptTextareaRef.current.scrollTop
+    transcriptHighlightRef.current.scrollLeft = transcriptTextareaRef.current.scrollLeft
+  }, [])
+
+  const renderTranscriptHighlight = () => {
+    if (!isRealtimeHighlightActive) return <span className="transcript-highlight-plain">{text || ' '}</span>
+
+    return (
+      <>
+        {realtimeBaseTextRef.current ? <span>{realtimeBaseTextRef.current} </span> : null}
+        {committedStableText ? <span>{committedStableText} </span> : null}
+        {hasRecentCommitted ? <span className="realtime-committed-flash">{recentCommittedText}</span> : null}
+        {hasRecentCommitted && realtimePartialText ? <span> </span> : null}
+        {realtimePartialText ? <span className="realtime-partial">{realtimePartialText}</span> : null}
+        {!text ? <span> </span> : null}
+      </>
+    )
+  }
+
   if (!settingsLoaded) {
     return <div className="app-shell"><div className="card"><h1>Loading...</h1></div></div>
   }
@@ -758,19 +783,20 @@ function App() {
         <div className={compactMode ? 'compact-panels' : ''}>
           <label>
             <span>Transcript</span>
-            <textarea value={text} onChange={(event) => setText(event.target.value)} rows={compactMode ? 4 : 10} placeholder="点 Start 或用快捷键开始说话。" />
-            {mode === 'elevenlabs-realtime' && (realtimeCommittedRef.current || realtimePartialText) ? (
-              <div className="realtime-preview" aria-live="polite">
-                <span className="realtime-preview-label">Realtime preview</span>
-                <div className="realtime-preview-content">
-                  {realtimeBaseTextRef.current ? <span>{realtimeBaseTextRef.current} </span> : null}
-                  {committedStableText ? <span>{committedStableText} </span> : null}
-                  {hasRecentCommitted ? <span className="realtime-committed-flash">{recentCommittedText}</span> : null}
-                  {hasRecentCommitted && realtimePartialText ? <span> </span> : null}
-                  {realtimePartialText ? <span className="realtime-partial">{realtimePartialText}</span> : null}
-                </div>
+            <div className={`transcript-editor ${isRealtimeHighlightActive ? 'realtime-active' : ''}`}>
+              <div ref={transcriptHighlightRef} className="transcript-highlight" aria-hidden="true">
+                <div className="transcript-highlight-content">{renderTranscriptHighlight()}</div>
               </div>
-            ) : null}
+              <textarea
+                ref={transcriptTextareaRef}
+                className={isRealtimeHighlightActive ? 'transcript-textarea realtime-overlay' : 'transcript-textarea'}
+                value={text}
+                onChange={(event) => setText(event.target.value)}
+                onScroll={syncTranscriptHighlightScroll}
+                rows={compactMode ? 4 : 10}
+                placeholder="点 Start 或用快捷键开始说话。"
+              />
+            </div>
           </label>
 
           <label>

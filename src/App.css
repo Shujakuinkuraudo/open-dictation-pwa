@@ -84,6 +84,12 @@ button, input, select, textarea { font: inherit; }
   font-size: 13px;
 }
 
+.compact-card .transcript-highlight {
+  border-radius: 16px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
 .compact-card .primary-toolbar {
   margin-top: 0;
   padding: 0;
@@ -154,6 +160,60 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.14);
 }
 textarea { resize: vertical; line-height: 1.55; }
+
+.transcript-editor {
+  position: relative;
+}
+
+.transcript-highlight,
+.transcript-textarea {
+  min-height: 0;
+  font: inherit;
+  line-height: 1.55;
+  letter-spacing: normal;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  tab-size: 4;
+}
+
+.transcript-highlight {
+  position: absolute;
+  inset: 0;
+  border: 1px solid #dadce0;
+  border-radius: 16px;
+  background: #fff;
+  color: #202124;
+  padding: 12px 14px;
+  overflow: auto;
+  pointer-events: none;
+}
+
+.transcript-highlight-content {
+  min-height: 100%;
+}
+
+.transcript-highlight-plain {
+  color: #202124;
+}
+
+.transcript-textarea {
+  position: relative;
+  background: transparent;
+}
+
+.transcript-editor.realtime-active .transcript-textarea {
+  color: transparent;
+  caret-color: #202124;
+}
+
+.transcript-editor.realtime-active .transcript-textarea::selection {
+  background: rgba(26, 115, 232, 0.2);
+}
+
+.transcript-editor.realtime-active .transcript-textarea::placeholder {
+  color: #80868b;
+}
 
 button {
   border: 1px solid #dadce0;
@@ -569,29 +629,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   color: #5f6368;
 }
 
-.realtime-preview {
-  margin-top: 10px;
-  border: 1px solid #e2d7ff;
-  background: #faf7ff;
-  border-radius: 16px;
-  padding: 10px 12px;
-}
-
-.realtime-preview-label {
-  display: block;
-  margin-bottom: 6px;
-  font-size: 12px;
-  color: #6b4fc3;
-  font-weight: 600;
-}
-
-.realtime-preview-content {
-  color: #202124;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
 .realtime-partial {
   background: rgba(139, 92, 246, 0.12);
   border-radius: 8px;
@@ -599,11 +636,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   color: #5b3db5;
 }
 
-.compact-card .realtime-preview {
-  margin-top: 8px;
-  padding: 8px 10px;
-  border-radius: 14px;
-}
 
 .realtime-committed-flash {
   border-radius: 8px;
