@@ -661,16 +661,20 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 
 .compact-shortcuts {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
   gap: 6px;
   margin: 6px 0 10px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
 }
 
 .compact-shortcut-chip {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 118px;
+  flex: 0 0 auto;
   padding: 8px 10px;
   border-radius: 14px;
   border: 1px solid #e3e8ee;
@@ -694,11 +698,5 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 
 .compact-card .compact-shortcuts {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-@media (max-width: 520px) {
-  .compact-shortcuts {
-    grid-template-columns: 1fr;
-  }
+  align-items: stretch;
 }
