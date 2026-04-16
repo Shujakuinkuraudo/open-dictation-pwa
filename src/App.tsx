@@ -763,11 +763,20 @@ function App() {
             <div className="toolbar compact-topbar">
               <button className="primary" onClick={() => void startCurrent()} disabled={isBusy}>Start</button>
               <button onClick={stopCurrent} disabled={stopDisabled}>Stop</button>
+              <button onClick={() => void handlePostProcess()} disabled={isBusy || !text.trim()}>Polish</button>
               <button onClick={() => void writeClipboard(processedText || text, processedText ? 'Processed text' : 'Transcript')} disabled={!(processedText || text).trim()}>Copy</button>
             </div>
             <div className="toolbar compact-bottombar">
               <button onClick={() => setShowAdvanced((value) => !value)}>{showAdvanced ? 'Hide' : 'Settings'}</button>
               <button onClick={() => setShowPwaDebug((value) => !value)}>{showPwaDebug ? 'Hide Debug' : 'Debug'}</button>
+            </div>
+            <div className="compact-shortcuts" aria-label="Keyboard shortcuts">
+              {SHORTCUTS.map((item) => (
+                <div key={item.combo} className="compact-shortcut-chip">
+                  <span>{item.label}</span>
+                  <code>{item.combo}</code>
+                </div>
+              ))}
             </div>
           </>
         ) : (
