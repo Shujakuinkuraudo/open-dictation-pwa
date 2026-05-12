@@ -3,8 +3,8 @@ import { useScribe } from '@elevenlabs/react'
 import { fetchRealtimeToken, getErrorMessage, postProcessWithLlm, transcribeBatch } from './api'
 import { InstallPrompt } from './components/InstallPrompt'
 import { usePWAInstall } from './hooks/usePWAInstall'
-import { DEFAULT_SETTINGS, loadSettings, saveSettings } from './settingsStore'
-import type { AppStatus, Mode, PersistedSettings } from './types'
+import { createDefaultPromptTemplates, DEFAULT_SETTINGS, loadSettings, saveSettings } from './settingsStore'
+import type { AppStatus, Mode, PersistedSettings, PromptTemplate } from './types'
 import './App.css'
 
 type SpeechRecognitionResultLike = {
@@ -58,6 +58,14 @@ const LANGUAGES = [
   { value: 'fr', label: 'French' },
 ]
 
+function createTemplateId(): string {
+  return `template-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function renderTemplate(template: string, transcript: string): string {
+  return template.includes('{{transcript}}') ? template.replaceAll('{{transcript}}', transcript) : `${template.trim()}\n\n${transcript}`.trim()
+}
+
 function getRecognitionConstructor(): SpeechRecognitionConstructor | null {
   return window.SpeechRecognition ?? window.webkitSpeechRecognition ?? null
 }
@@ -72,7 +80,8 @@ function App() {
   const [llmApiKey, setLlmApiKey] = useState(DEFAULT_SETTINGS.llmApiKey)
   const [llmBaseUrl, setLlmBaseUrl] = useState(DEFAULT_SETTINGS.llmBaseUrl)
   const [llmModel, setLlmModel] = useState(DEFAULT_SETTINGS.llmModel)
-  const [llmPrompt, setLlmPrompt] = useState(DEFAULT_SETTINGS.llmPrompt)
+  const [templates, setTemplates] = useState<PromptTemplate[]>(DEFAULT_SETTINGS.templates)
+  const [selectedTemplateId, setSelectedTemplateId] = useState(DEFAULT_SETTINGS.selectedTemplateId)
   const [compactMode, setCompactMode] = useState(DEFAULT_SETTINGS.compactMode)
   const [autoCopyTranscript, setAutoCopyTranscript] = useState(DEFAULT_SETTINGS.autoCopyTranscript)
   const [autoCopyProcessed, setAutoCopyProcessed] = useState(DEFAULT_SETTINGS.autoCopyProcessed)
@@ -81,6 +90,7 @@ function App() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(true)
+  const [showTemplateManager, setShowTemplateManager] = useState(false)
   const [showPwaDebug, setShowPwaDebug] = useState(false)
   const [swStatus, setSwStatus] = useState('checking')
   const [manifestStatus, setManifestStatus] = useState('checking')
@@ -123,7 +133,8 @@ function App() {
       setLlmApiKey(saved.llmApiKey)
       setLlmBaseUrl(saved.llmBaseUrl)
       setLlmModel(saved.llmModel)
-      setLlmPrompt(saved.llmPrompt)
+      setTemplates(saved.templates)
+      setSelectedTemplateId(saved.selectedTemplateId)
       setCompactMode(saved.compactMode)
       setAutoCopyTranscript(saved.autoCopyTranscript)
       setAutoCopyProcessed(saved.autoCopyProcessed)
@@ -157,7 +168,8 @@ function App() {
       llmApiKey,
       llmBaseUrl,
       llmModel,
-      llmPrompt,
+      templates,
+      selectedTemplateId,
       compactMode,
       autoCopyTranscript,
       autoCopyProcessed,
@@ -167,7 +179,7 @@ function App() {
     void saveSettings(settings).catch((err) => {
       setNotice(`无法保存本地设置：${getErrorMessage(err)}`)
     })
-  }, [settingsLoaded, mode, apiKey, language, text, processedText, llmApiKey, llmBaseUrl, llmModel, llmPrompt, compactMode, autoCopyTranscript, autoCopyProcessed, shortcutsEnabled])
+  }, [settingsLoaded, mode, apiKey, language, text, processedText, llmApiKey, llmBaseUrl, llmModel, templates, selectedTemplateId, compactMode, autoCopyTranscript, autoCopyProcessed, shortcutsEnabled])
 
   const canUseLocal = typeof window !== 'undefined' && getRecognitionConstructor() !== null
   const canUseMediaRecorder = typeof window !== 'undefined' && typeof MediaRecorder !== 'undefined'
@@ -175,6 +187,7 @@ function App() {
   const stopDisabled = status === 'idle' || status === 'error' || status === 'post-processing'
   const settingsDisabled = isBusy
   const needsApiKey = mode !== 'local'
+  const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0]
 
   const writeClipboard = useCallback(async (value: string, label: string) => {
     if (!value.trim()) return
@@ -451,22 +464,102 @@ function App() {
     setProcessedText('')
   }, [updateText])
 
+  const updateTemplate = useCallback((templateId: string, patch: Partial<Pick<PromptTemplate, 'name' | 'description' | 'systemPrompt' | 'userPromptTemplate'>>) => {
+    setTemplates((current) => current.map((template) => (
+      template.id === templateId ? { ...template, ...patch, updatedAt: new Date().toISOString() } : template
+    )))
+  }, [])
+
+  const addTemplate = useCallback(() => {
+    const now = new Date().toISOString()
+    const next: PromptTemplate = {
+      id: createTemplateId(),
+      name: '新模板',
+      description: '自定义 AI 对话模板。',
+      systemPrompt: '你是一个中文 AI 对话输入整理器。请按用户要求整理口述内容，只输出最终文本。',
+      userPromptTemplate: '请整理下面这段口述：\n\n{{transcript}}',
+      createdAt: now,
+      updatedAt: now,
+    }
+    setTemplates((current) => [...current, next])
+    setSelectedTemplateId(next.id)
+    setShowTemplateManager(true)
+  }, [])
+
+  const duplicateTemplate = useCallback((templateId: string) => {
+    const source = templates.find((template) => template.id === templateId)
+    if (!source) return
+    const now = new Date().toISOString()
+    const next: PromptTemplate = {
+      ...source,
+      id: createTemplateId(),
+      name: `${source.name} 副本`,
+      createdAt: now,
+      updatedAt: now,
+    }
+    setTemplates((current) => [...current, next])
+    setSelectedTemplateId(next.id)
+    setShowTemplateManager(true)
+  }, [templates])
+
+  const deleteTemplate = useCallback((templateId: string) => {
+    setTemplates((current) => {
+      if (current.length <= 1) {
+        setNotice('至少需要保留一个模板。')
+        return current
+      }
+      const next = current.filter((template) => template.id !== templateId)
+      if (selectedTemplateId === templateId) setSelectedTemplateId(next[0].id)
+      return next
+    })
+  }, [selectedTemplateId])
+
+  const moveTemplate = useCallback((templateId: string, direction: -1 | 1) => {
+    setTemplates((current) => {
+      const index = current.findIndex((template) => template.id === templateId)
+      const target = index + direction
+      if (index < 0 || target < 0 || target >= current.length) return current
+      const next = [...current]
+      const [item] = next.splice(index, 1)
+      next.splice(target, 0, item)
+      return next
+    })
+  }, [])
+
+  const resetTemplates = useCallback(() => {
+    const next = createDefaultPromptTemplates()
+    setTemplates(next)
+    setSelectedTemplateId(next[0].id)
+    setNotice('已恢复默认模板。')
+  }, [])
+
   const handlePostProcess = useCallback(async () => {
     if (!text.trim()) {
       setStatus('error')
       setError('Please provide transcript text first.')
       return
     }
-    if (!llmApiKey.trim() || !llmBaseUrl.trim() || !llmModel.trim() || !llmPrompt.trim()) {
+    if (!selectedTemplate) {
       setStatus('error')
-      setError('Please complete the LLM configuration and prompt.')
+      setError('Please select or create a prompt template.')
+      return
+    }
+    if (!llmApiKey.trim() || !llmBaseUrl.trim() || !llmModel.trim() || !selectedTemplate.systemPrompt.trim() || !selectedTemplate.userPromptTemplate.trim()) {
+      setStatus('error')
+      setError('Please complete the LLM configuration and selected template.')
       return
     }
     try {
       setStatus('post-processing')
       setError('')
       setNotice('')
-      const result = await postProcessWithLlm({ apiKey: llmApiKey.trim(), baseUrl: llmBaseUrl.trim(), model: llmModel.trim(), prompt: llmPrompt.trim(), text })
+      const result = await postProcessWithLlm({
+        apiKey: llmApiKey.trim(),
+        baseUrl: llmBaseUrl.trim(),
+        model: llmModel.trim(),
+        systemPrompt: selectedTemplate.systemPrompt.trim(),
+        userContent: renderTemplate(selectedTemplate.userPromptTemplate, text.trim()),
+      })
       setProcessedText(result)
       if (autoCopyProcessed) await writeClipboard(result, 'Processed text')
       setStatus('idle')
@@ -474,7 +567,7 @@ function App() {
       setStatus('error')
       setError(getErrorMessage(err))
     }
-  }, [autoCopyProcessed, llmApiKey, llmBaseUrl, llmModel, llmPrompt, text, writeClipboard])
+  }, [autoCopyProcessed, llmApiKey, llmBaseUrl, llmModel, selectedTemplate, text, writeClipboard])
 
   const toggleCompactMode = useCallback(() => {
     setCompactMode((value) => {
@@ -659,9 +752,15 @@ function App() {
             <div className="toolbar compact-topbar">
               <button className="primary" onClick={() => void startCurrent()} disabled={isBusy}>Start</button>
               <button onClick={stopCurrent} disabled={stopDisabled}>Stop</button>
-              <button onClick={() => void handlePostProcess()} disabled={isBusy || !text.trim()}>Polish</button>
+              <button onClick={() => void handlePostProcess()} disabled={isBusy || !text.trim() || !selectedTemplate}>Generate</button>
               <button onClick={() => void writeClipboard(processedText || text, processedText ? 'Processed text' : 'Transcript')} disabled={!(processedText || text).trim()}>Copy</button>
             </div>
+            <label className="compact-template-select">
+              <span>Template</span>
+              <select value={selectedTemplate?.id ?? ''} onChange={(event) => setSelectedTemplateId(event.target.value)} disabled={isBusy || templates.length === 0}>
+                {templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+              </select>
+            </label>
             <div className="toolbar compact-bottombar">
               <button onClick={() => setShowAdvanced((value) => !value)}>{showAdvanced ? 'Hide' : 'Settings'}</button>
               <button onClick={() => setShowPwaDebug((value) => !value)}>{showPwaDebug ? 'Hide Debug' : 'Debug'}</button>
@@ -684,6 +783,82 @@ function App() {
             <button onClick={() => setShowPwaDebug((value) => !value)}>{showPwaDebug ? 'Hide PWA Debug' : 'PWA Debug'}</button>
           </div>
         )}
+
+        {!compactMode ? (
+          <div className="template-panel">
+            <div className="template-panel-head">
+              <div>
+                <h2>Prompt Template</h2>
+                <p className="subtitle small">选择一个 AI 对话模板，把语音转写整理成可直接复制的输入。</p>
+              </div>
+              <button onClick={() => setShowTemplateManager((value) => !value)}>{showTemplateManager ? 'Hide Templates' : 'Manage Templates'}</button>
+            </div>
+            <div className="template-select-row">
+              <label>
+                <span>Active Template</span>
+                <select value={selectedTemplate?.id ?? ''} onChange={(event) => setSelectedTemplateId(event.target.value)} disabled={isBusy || templates.length === 0}>
+                  {templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+                </select>
+              </label>
+              <div className="template-description">
+                <span>Description</span>
+                <p>{selectedTemplate?.description || '暂无模板描述。'}</p>
+              </div>
+            </div>
+
+            {showTemplateManager ? (
+              <div className="template-manager">
+                <div className="template-manager-toolbar">
+                  <button onClick={addTemplate}>Add Template</button>
+                  <button onClick={() => selectedTemplate && duplicateTemplate(selectedTemplate.id)} disabled={!selectedTemplate}>Duplicate</button>
+                  <button onClick={resetTemplates}>Restore Defaults</button>
+                </div>
+                <div className="template-manager-grid">
+                  <div className="template-list" aria-label="Prompt templates">
+                    {templates.map((template, index) => (
+                      <button
+                        key={template.id}
+                        className={template.id === selectedTemplate?.id ? 'template-list-item active' : 'template-list-item'}
+                        onClick={() => setSelectedTemplateId(template.id)}
+                      >
+                        <strong>{template.name || '未命名模板'}</strong>
+                        <span>{template.description || '暂无描述'}</span>
+                        <small>{index + 1}</small>
+                      </button>
+                    ))}
+                  </div>
+
+                  {selectedTemplate ? (
+                    <div className="template-editor">
+                      <div className="template-editor-actions">
+                        <button onClick={() => moveTemplate(selectedTemplate.id, -1)}>Move Up</button>
+                        <button onClick={() => moveTemplate(selectedTemplate.id, 1)}>Move Down</button>
+                        <button onClick={() => deleteTemplate(selectedTemplate.id)} disabled={templates.length <= 1}>Delete</button>
+                      </div>
+                      <label>
+                        <span>Template Name</span>
+                        <input value={selectedTemplate.name} onChange={(event) => updateTemplate(selectedTemplate.id, { name: event.target.value })} />
+                      </label>
+                      <label>
+                        <span>Description</span>
+                        <input value={selectedTemplate.description} onChange={(event) => updateTemplate(selectedTemplate.id, { description: event.target.value })} />
+                      </label>
+                      <label>
+                        <span>System Prompt</span>
+                        <textarea value={selectedTemplate.systemPrompt} onChange={(event) => updateTemplate(selectedTemplate.id, { systemPrompt: event.target.value })} rows={5} />
+                      </label>
+                      <label>
+                        <span>User Prompt Template</span>
+                        <textarea value={selectedTemplate.userPromptTemplate} onChange={(event) => updateTemplate(selectedTemplate.id, { userPromptTemplate: event.target.value })} rows={5} />
+                        <small className="field-help">使用 {'{{transcript}}'} 表示转写文本插入位置；未包含时会自动附加到模板末尾。</small>
+                      </label>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className={compactMode ? 'compact-panels' : ''}>
           <label>
@@ -714,7 +889,7 @@ function App() {
 
         {!compactMode ? (
           <div className="toolbar">
-            <button onClick={() => void handlePostProcess()} disabled={isBusy}>Post-process</button>
+            <button onClick={() => void handlePostProcess()} disabled={isBusy || !selectedTemplate}>Generate from Template</button>
             <button onClick={() => void writeClipboard(text, 'Transcript')} disabled={!text.trim()}>Copy T</button>
             <button onClick={() => void writeClipboard(processedText, 'Processed text')} disabled={!processedText.trim()}>Copy P</button>
             <button onClick={clearText} disabled={isBusy || (!text && !processedText)}>Clear</button>
@@ -784,7 +959,7 @@ function App() {
 
             <div className="section-divider" />
             <h2>LLM Post-processing</h2>
-            <p className="subtitle small">支持 OpenAI 兼容接口，按你的 prompt 改写转写文本。</p>
+            <p className="subtitle small">支持 OpenAI 兼容接口，按当前选中的 Prompt Template 改写转写文本。</p>
 
             <div className="grid two">
               <label>
@@ -803,17 +978,13 @@ function App() {
               <small className="field-help">仅保存在当前浏览器本地 IndexedDB，请求会直接发送到你填写的接口地址。</small>
             </label>
 
-            <label>
-              <span>LLM Prompt</span>
-              <textarea value={llmPrompt} onChange={(event) => setLlmPrompt(event.target.value)} rows={5} placeholder="描述你想如何改写转写文本。" />
-            </label>
-
             <div className="tips">
               <h2>Usage</h2>
               <ol>
                 <li>推荐先用 Chrome 打开，然后点 Install App，安装成桌面应用。</li>
                 <li>Mini mode 会变成更像悬浮胶囊的布局，适合常驻桌面。</li>
-                <li>Stop 后可自动复制转写，LLM 后处理完成后也可自动复制结果。</li>
+                <li>选择模板后点击 Generate from Template，生成结果会写入 Processed Text。</li>
+                <li>Stop 后可自动复制转写，模板生成完成后也可自动复制结果。</li>
               </ol>
               <div className="shortcut-list">
                 {SHORTCUTS.map((item) => (

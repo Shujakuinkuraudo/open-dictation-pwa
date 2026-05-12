@@ -37,8 +37,8 @@ export async function postProcessWithLlm(config: {
   apiKey: string
   baseUrl: string
   model: string
-  prompt: string
-  text: string
+  systemPrompt: string
+  userContent: string
 }): Promise<string> {
   const endpoint = `${config.baseUrl.replace(/\/$/, '')}/chat/completions`
   const response = await fetch(endpoint, {
@@ -50,8 +50,8 @@ export async function postProcessWithLlm(config: {
     body: JSON.stringify({
       model: config.model,
       messages: [
-        { role: 'system', content: config.prompt },
-        { role: 'user', content: config.text },
+        { role: 'system', content: config.systemPrompt },
+        { role: 'user', content: config.userContent },
       ],
       temperature: 0.2,
     }),

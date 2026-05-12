@@ -28,7 +28,7 @@ GitHub Actions uses Node.js 22 and runs `npm ci` followed by `npm run build`.
 - `src/api.ts`: browser-side ElevenLabs and OpenAI-compatible API helpers.
 - `src/App.css`: app layout and component styling.
 - `src/index.css`: global page/root styles.
-- `src/settingsStore.ts`: IndexedDB settings load/save helpers and defaults.
+- `src/settingsStore.ts`: IndexedDB settings load/save helpers, defaults, and prompt template migration.
 - `src/types.ts`: shared app and settings types.
 - `src/hooks/usePWAInstall.ts`: PWA install prompt and standalone detection logic.
 - `src/components/InstallPrompt.tsx`: install prompt UI.
@@ -47,6 +47,7 @@ Do not edit `dist/` output or generated build artifacts. Rebuild them instead.
 - Keep PWA behavior in mind when changing routing, asset paths, icons, manifest fields, service worker behavior, or cache strategy.
 - `vite.config.ts` resolves the base path automatically for GitHub Pages. The workflow currently sets `PAGES_BASE_PATH=/`.
 - For UI changes, check both normal and mini mode. Transcript and processed text fields must remain directly editable after generated content appears.
+- For prompt template changes, verify old saved settings still load, default templates appear on first run, and mini mode can still generate from the selected template.
 - Avoid broad visual rewrites unless requested; this is a utility app, so dense, predictable controls are preferable to landing-page styling.
 
 ## Validation

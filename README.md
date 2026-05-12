@@ -6,6 +6,7 @@
 - ElevenLabs 实时转写
 - ElevenLabs 批量语音转写
 - OpenAI 兼容接口后处理
+- AI 对话 Prompt Template 模板库
 - PWA 安装
 - GitHub Pages 静态部署
 
@@ -23,6 +24,25 @@
 - ElevenLabs 请求由浏览器直接发出
 - LLM 后处理请求由浏览器直接发到你填写的 OpenAI 兼容接口
 - 不依赖你自己的后端
+
+## Prompt Template 模板库
+
+这个工具可以作为“语音 Prompt 生产台”使用：
+
+1. 先通过本地语音识别或 ElevenLabs 得到 `Transcript`。
+2. 在 `Prompt Template` 中选择一个 AI 对话模板。
+3. 点击 `Generate from Template`，结果会写入 `Processed Text`。
+4. 如果打开了 `Auto copy processed text`，生成结果会自动复制到剪贴板。
+
+内置模板覆盖常见 AI 对话输入场景：
+
+- 直接提问
+- 任务指令
+- 上下文整理
+- 继续追问
+- 先澄清
+
+模板支持新增、编辑、删除、复制、排序和恢复默认。模板和 API Key 一样，仅保存在当前浏览器 IndexedDB。
 
 ## 本地开发
 
@@ -66,7 +86,7 @@ npm run preview
 
 ## 隐私说明
 
-- ElevenLabs API Key 与 LLM API Key 仅保存在当前浏览器 IndexedDB。
+- ElevenLabs API Key、LLM API Key 与 Prompt Template 仅保存在当前浏览器 IndexedDB。
 - 本项目不会把这些密钥上传到你自己的远端后端。
 - 但请求会直接从浏览器发往 ElevenLabs 或你填写的 LLM 接口。
 
