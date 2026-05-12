@@ -709,7 +709,8 @@ function App() {
     ? committedPreviewText.slice(0, committedPreviewText.length - recentCommittedText.length).trimEnd()
     : committedPreviewText
 
-  const isRealtimeHighlightActive = mode === 'elevenlabs-realtime' && Boolean(realtimeCommittedRef.current || realtimePartialText)
+  const isRealtimeSessionActive = mode === 'elevenlabs-realtime' && (status === 'connecting' || status === 'listening')
+  const isRealtimeHighlightActive = isRealtimeSessionActive && Boolean(realtimeCommittedRef.current || realtimePartialText)
 
   const syncTranscriptHighlightScroll = useCallback(() => {
     if (!transcriptTextareaRef.current || !transcriptHighlightRef.current) return
