@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useScribe } from '@elevenlabs/react'
+import { fetchRealtimeToken, getErrorMessage, postProcessWithLlm, transcribeBatch } from './api'
 import { InstallPrompt } from './components/InstallPrompt'
 import { usePWAInstall } from './hooks/usePWAInstall'
+import { DEFAULT_SETTINGS, loadSettings, saveSettings } from './settingsStore'
+import type { AppStatus, Mode, PersistedSettings } from './types'
 import './App.css'
-
-type Mode = 'local' | 'elevenlabs-realtime' | 'elevenlabs-batch'
-type AppStatus = 'idle' | 'connecting' | 'listening' | 'processing' | 'post-processing' | 'error'
 
 type SpeechRecognitionResultLike = {
   isFinal: boolean
@@ -31,24 +31,6 @@ type SpeechRecognitionLike = EventTarget & {
 
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike
 
-type PersistedSettings = {
-  mode: Mode
-  apiKey: string
-  language: string
-  text: string
-  processedText: string
-  llmApiKey: string
-  llmBaseUrl: string
-  llmModel: string
-  llmPrompt: string
-  compactMode: boolean
-  autoCopyTranscript: boolean
-  autoCopyProcessed: boolean
-  shortcutsEnabled: boolean
-}
-
-type StoredItem = { key: string; value: PersistedSettings }
-
 declare global {
   interface Window {
     SpeechRecognition?: SpeechRecognitionConstructor
@@ -58,25 +40,6 @@ declare global {
 
 const APP_BASE_URL = import.meta.env.BASE_URL
 
-const DEFAULT_SETTINGS: PersistedSettings = {
-  mode: 'local',
-  apiKey: '',
-  language: '',
-  text: '',
-  processedText: '',
-  llmApiKey: '',
-  llmBaseUrl: '',
-  llmModel: '',
-  llmPrompt: '请将下面这段转写文本整理成更清晰、更适合发送的中文。保留原意，修正口语、重复、语气词和明显识别错误，只输出最终文本。',
-  compactMode: false,
-  autoCopyTranscript: true,
-  autoCopyProcessed: true,
-  shortcutsEnabled: true,
-}
-
-const DB_NAME = 'dictation-prototype-db'
-const STORE_NAME = 'settings'
-const SETTINGS_KEY = 'app'
 const DEFAULT_SHORTCUT_LABEL = 'Ctrl/⌘ + Shift + Space'
 const SHORTCUTS = [
   { label: '录音开关', combo: 'Ctrl/⌘ + Shift + Space' },
@@ -97,114 +60,6 @@ const LANGUAGES = [
 
 function getRecognitionConstructor(): SpeechRecognitionConstructor | null {
   return window.SpeechRecognition ?? window.webkitSpeechRecognition ?? null
-}
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
-  return String(error)
-}
-
-function openSettingsDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1)
-    request.onerror = () => reject(request.error ?? new Error('Failed to open IndexedDB'))
-    request.onupgradeneeded = () => {
-      const db = request.result
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'key' })
-      }
-    }
-    request.onsuccess = () => resolve(request.result)
-  })
-}
-
-async function loadSettings(): Promise<PersistedSettings> {
-  const db = await openSettingsDb()
-  return await new Promise<PersistedSettings>((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readonly')
-    const request = tx.objectStore(STORE_NAME).get(SETTINGS_KEY)
-    request.onerror = () => reject(request.error ?? new Error('Failed to read settings'))
-    request.onsuccess = () => {
-      const result = request.result as StoredItem | undefined
-      resolve(result?.value ? { ...DEFAULT_SETTINGS, ...result.value } : DEFAULT_SETTINGS)
-    }
-  }).finally(() => db.close())
-}
-
-async function saveSettings(settings: PersistedSettings): Promise<void> {
-  const db = await openSettingsDb()
-  return await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite')
-    tx.oncomplete = () => resolve()
-    tx.onerror = () => reject(tx.error ?? new Error('Failed to save settings'))
-    tx.objectStore(STORE_NAME).put({ key: SETTINGS_KEY, value: settings })
-  }).finally(() => db.close())
-}
-
-async function fetchRealtimeToken(apiKey: string): Promise<string> {
-  const response = await fetch('https://api.elevenlabs.io/v1/single-use-token/realtime_scribe', {
-    method: 'POST',
-    headers: { 'xi-api-key': apiKey, Accept: 'application/json' },
-  })
-  const data = (await response.json().catch(() => ({}))) as { token?: string; detail?: { message?: string } | string; error?: string }
-  if (!response.ok || !data.token) {
-    throw new Error(typeof data.detail === 'string' ? data.detail : data.detail?.message || data.error || 'Failed to fetch realtime token')
-  }
-  return data.token
-}
-
-async function transcribeBatch(blob: Blob, apiKey: string, language: string): Promise<string> {
-  const formData = new FormData()
-  formData.set('model_id', 'scribe_v2')
-  formData.set('file', new File([blob], 'speech.webm', { type: blob.type || 'audio/webm' }))
-  if (language) formData.set('language_code', language)
-
-  const response = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
-    method: 'POST',
-    headers: { 'xi-api-key': apiKey, Accept: 'application/json' },
-    body: formData,
-  })
-  const data = (await response.json().catch(() => ({}))) as { text?: string; detail?: { message?: string } | string; error?: string }
-  if (!response.ok) {
-    throw new Error(typeof data.detail === 'string' ? data.detail : data.detail?.message || data.error || 'Batch transcription failed')
-  }
-  return data.text?.trim() || ''
-}
-
-async function postProcessWithLlm(config: {
-  apiKey: string
-  baseUrl: string
-  model: string
-  prompt: string
-  text: string
-}): Promise<string> {
-  const endpoint = `${config.baseUrl.replace(/\/$/, '')}/chat/completions`
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: config.model,
-      messages: [
-        { role: 'system', content: config.prompt },
-        { role: 'user', content: config.text },
-      ],
-      temperature: 0.2,
-    }),
-  })
-  const data = (await response.json().catch(() => ({}))) as {
-    choices?: Array<{ message?: { content?: string | Array<{ text?: string }> } }>
-    error?: { message?: string } | string
-  }
-  if (!response.ok) {
-    throw new Error(typeof data.error === 'string' ? data.error : data.error?.message || 'LLM post-processing failed')
-  }
-  const content = data.choices?.[0]?.message?.content
-  if (typeof content === 'string') return content.trim()
-  if (Array.isArray(content)) return content.map((item) => item.text || '').join('').trim()
-  throw new Error('LLM returned no content')
 }
 
 function App() {
@@ -240,6 +95,8 @@ function App() {
   const chunksRef = useRef<Blob[]>([])
   const baseTextRef = useRef('')
   const finalizedTextRef = useRef('')
+  const latestTextRef = useRef(DEFAULT_SETTINGS.text)
+  const activeModeRef = useRef<Mode | null>(null)
   const realtimeBaseTextRef = useRef('')
   const realtimeCommittedRef = useRef('')
   const stoppingLocalRef = useRef(false)
@@ -250,14 +107,18 @@ function App() {
 
   const { canInstall, canInstallIOS, isStandalone, promptInstall, installState, debug: pwaDebug } = usePWAInstall()
 
+  const updateText = useCallback((value: string) => {
+    latestTextRef.current = value
+    setText(value)
+  }, [])
+
   useEffect(() => {
     let cancelled = false
-    void loadSettings().then((saved) => {
-      if (cancelled) return
+    const applySettings = (saved: PersistedSettings) => {
       setMode(saved.mode)
       setApiKey(saved.apiKey)
       setLanguage(saved.language)
-      setText(saved.text)
+      updateText(saved.text)
       setProcessedText(saved.processedText)
       setLlmApiKey(saved.llmApiKey)
       setLlmBaseUrl(saved.llmBaseUrl)
@@ -268,16 +129,26 @@ function App() {
       setAutoCopyProcessed(saved.autoCopyProcessed)
       setShortcutsEnabled(saved.shortcutsEnabled)
       setShowAdvanced(!saved.compactMode)
-      setSettingsLoaded(true)
-    })
+    }
+
+    void loadSettings()
+      .catch((error) => {
+        setNotice(`无法读取本地设置，已使用默认配置：${getErrorMessage(error)}`)
+        return DEFAULT_SETTINGS
+      })
+      .then((saved) => {
+        if (cancelled) return
+        applySettings(saved)
+        setSettingsLoaded(true)
+      })
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [updateText])
 
   useEffect(() => {
     if (!settingsLoaded) return
-    void saveSettings({
+    const settings: PersistedSettings = {
       mode,
       apiKey,
       language,
@@ -291,15 +162,18 @@ function App() {
       autoCopyTranscript,
       autoCopyProcessed,
       shortcutsEnabled,
+    }
+
+    void saveSettings(settings).catch((err) => {
+      setNotice(`无法保存本地设置：${getErrorMessage(err)}`)
     })
   }, [settingsLoaded, mode, apiKey, language, text, processedText, llmApiKey, llmBaseUrl, llmModel, llmPrompt, compactMode, autoCopyTranscript, autoCopyProcessed, shortcutsEnabled])
-
-
 
   const canUseLocal = typeof window !== 'undefined' && getRecognitionConstructor() !== null
   const canUseMediaRecorder = typeof window !== 'undefined' && typeof MediaRecorder !== 'undefined'
   const isBusy = status === 'connecting' || status === 'listening' || status === 'processing' || status === 'post-processing'
   const stopDisabled = status === 'idle' || status === 'error' || status === 'post-processing'
+  const settingsDisabled = isBusy
   const needsApiKey = mode !== 'local'
 
   const writeClipboard = useCallback(async (value: string, label: string) => {
@@ -323,15 +197,18 @@ function App() {
       setRecentCommittedText('')
     },
     onDisconnect: () => {
+      const wasStopping = stoppingRealtimeRef.current
       setStatus((current) => (current === 'error' || current === 'processing' || current === 'post-processing' ? current : 'idle'))
       stoppingRealtimeRef.current = false
+      activeModeRef.current = null
       setRealtimePartialText('')
       setRecentCommittedText('')
+      if (wasStopping && autoCopyTranscript) void writeClipboard(latestTextRef.current, 'Transcript')
     },
     onPartialTranscript: ({ text: partial }) => {
       setRealtimePartialText(partial.trim())
       const combined = `${realtimeCommittedRef.current} ${partial}`.trim()
-      setText(realtimeBaseTextRef.current ? `${realtimeBaseTextRef.current} ${combined}`.trim() : combined)
+      updateText(realtimeBaseTextRef.current ? `${realtimeBaseTextRef.current} ${combined}`.trim() : combined)
     },
     onCommittedTranscript: ({ text: committed }) => {
       const committedChunk = committed.trim()
@@ -344,14 +221,16 @@ function App() {
         recentCommittedTimerRef.current = null
       }, 1400)
       const combined = realtimeCommittedRef.current.trim()
-      setText(realtimeBaseTextRef.current ? `${realtimeBaseTextRef.current} ${combined}`.trim() : combined)
+      updateText(realtimeBaseTextRef.current ? `${realtimeBaseTextRef.current} ${combined}`.trim() : combined)
     },
     onError: (event) => {
       if (stoppingRealtimeRef.current) {
         stoppingRealtimeRef.current = false
+        activeModeRef.current = null
         setStatus('idle')
         return
       }
+      activeModeRef.current = null
       setStatus('error')
       setError(getErrorMessage(event))
     },
@@ -383,6 +262,7 @@ function App() {
     if (scribe.isConnected || scribe.status === 'connecting') scribe.disconnect()
     else {
       stoppingRealtimeRef.current = false
+      activeModeRef.current = null
       setStatus('idle')
     }
   }, [scribe])
@@ -394,8 +274,9 @@ function App() {
   }, [])
 
   const stopCurrent = useCallback(() => {
-    if (mode === 'local') return stopLocal()
-    if (mode === 'elevenlabs-realtime') return stopRealtime()
+    const activeMode = activeModeRef.current ?? mode
+    if (activeMode === 'local') return stopLocal()
+    if (activeMode === 'elevenlabs-realtime') return stopRealtime()
     return stopBatch()
   }, [mode, stopBatch, stopLocal, stopRealtime])
 
@@ -415,6 +296,7 @@ function App() {
     stoppingLocalRef.current = false
 
     recognition.onstart = () => {
+      activeModeRef.current = 'local'
       setStatus('listening')
       setError('')
       setNotice('')
@@ -430,7 +312,7 @@ function App() {
       }
       if (finalChunk.trim()) finalizedTextRef.current = `${finalizedTextRef.current} ${finalChunk}`.trim()
       const merged = `${finalizedTextRef.current} ${interimChunk}`.trim()
-      setText(baseTextRef.current ? `${baseTextRef.current} ${merged}`.trim() : merged)
+      updateText(baseTextRef.current ? `${baseTextRef.current} ${merged}`.trim() : merged)
     }
     recognition.onerror = (event) => {
       if (stoppingLocalRef.current || event.error === 'aborted') return
@@ -441,15 +323,16 @@ function App() {
       recognitionRef.current = null
       const wasStopping = stoppingLocalRef.current
       stoppingLocalRef.current = false
+      activeModeRef.current = null
       setStatus((current) => (current === 'error' && !wasStopping ? current : 'idle'))
-      if (wasStopping && autoCopyTranscript) void writeClipboard(text, 'Transcript')
+      if (wasStopping && autoCopyTranscript) void writeClipboard(latestTextRef.current, 'Transcript')
     }
     recognitionRef.current = recognition
     setStatus('connecting')
     setError('')
     setNotice('')
     recognition.start()
-  }, [autoCopyTranscript, language, text, writeClipboard])
+  }, [autoCopyTranscript, language, text, updateText, writeClipboard])
 
   const startRealtime = useCallback(async () => {
     if (!apiKey.trim()) {
@@ -461,6 +344,7 @@ function App() {
       setStatus('connecting')
       setError('')
       setNotice('')
+      activeModeRef.current = 'elevenlabs-realtime'
       stoppingRealtimeRef.current = false
       realtimeBaseTextRef.current = text
       realtimeCommittedRef.current = ''
@@ -479,6 +363,7 @@ function App() {
         microphone: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
       })
     } catch (err) {
+      activeModeRef.current = null
       setStatus('error')
       setError(getErrorMessage(err))
     }
@@ -499,6 +384,7 @@ function App() {
       setStatus('connecting')
       setError('')
       setNotice('')
+      activeModeRef.current = 'elevenlabs-batch'
       chunksRef.current = []
       baseTextRef.current = text
       stoppingBatchRef.current = false
@@ -510,6 +396,10 @@ function App() {
       recorder.ondataavailable = (event) => { if (event.data.size > 0) chunksRef.current.push(event.data) }
       recorder.onerror = () => {
         if (stoppingBatchRef.current) return
+        streamRef.current?.getTracks().forEach((track) => track.stop())
+        streamRef.current = null
+        recorderRef.current = null
+        activeModeRef.current = null
         setStatus('error')
         setError('Audio recording failed')
       }
@@ -520,7 +410,7 @@ function App() {
           if (blob.size > 0) {
             const transcript = await transcribeBatch(blob, apiKey.trim(), language)
             const next = baseTextRef.current ? `${baseTextRef.current} ${transcript}`.trim() : transcript
-            setText(next)
+            updateText(next)
             if (autoCopyTranscript) await writeClipboard(next, 'Transcript')
           }
           setStatus('idle')
@@ -533,14 +423,16 @@ function App() {
           recorderRef.current = null
           chunksRef.current = []
           stoppingBatchRef.current = false
+          activeModeRef.current = null
         }
       }
       recorder.start()
     } catch (err) {
+      activeModeRef.current = null
       setStatus('error')
       setError(getErrorMessage(err))
     }
-  }, [apiKey, autoCopyTranscript, canUseMediaRecorder, language, text, writeClipboard])
+  }, [apiKey, autoCopyTranscript, canUseMediaRecorder, language, text, updateText, writeClipboard])
 
   const startCurrent = useCallback(async () => {
     if (isBusy) return
@@ -553,6 +445,11 @@ function App() {
     if (isBusy) stopCurrent()
     else await startCurrent()
   }, [isBusy, startCurrent, stopCurrent])
+
+  const clearText = useCallback(() => {
+    updateText('')
+    setProcessedText('')
+  }, [updateText])
 
   const handlePostProcess = useCallback(async () => {
     if (!text.trim()) {
@@ -709,7 +606,7 @@ function App() {
     ? committedPreviewText.slice(0, committedPreviewText.length - recentCommittedText.length).trimEnd()
     : committedPreviewText
 
-  const isRealtimeSessionActive = mode === 'elevenlabs-realtime' && (status === 'connecting' || status === 'listening')
+  const isRealtimeSessionActive = activeModeRef.current === 'elevenlabs-realtime' && (status === 'connecting' || status === 'listening')
   const isRealtimeHighlightActive = isRealtimeSessionActive && Boolean(realtimeCommittedRef.current || realtimePartialText)
 
   const syncTranscriptHighlightScroll = useCallback(() => {
@@ -719,8 +616,6 @@ function App() {
   }, [])
 
   const renderTranscriptHighlight = () => {
-    if (!isRealtimeHighlightActive) return <span className="transcript-highlight-plain">{text || ' '}</span>
-
     return (
       <>
         {realtimeBaseTextRef.current ? <span>{realtimeBaseTextRef.current} </span> : null}
@@ -794,14 +689,16 @@ function App() {
           <label>
             <span>Transcript</span>
             <div className={`transcript-editor ${isRealtimeHighlightActive ? 'realtime-active' : ''}`}>
-              <div ref={transcriptHighlightRef} className="transcript-highlight" aria-hidden="true">
-                <div className="transcript-highlight-content">{renderTranscriptHighlight()}</div>
-              </div>
+              {isRealtimeHighlightActive ? (
+                <div ref={transcriptHighlightRef} className="transcript-highlight" aria-hidden="true">
+                  <div className="transcript-highlight-content">{renderTranscriptHighlight()}</div>
+                </div>
+              ) : null}
               <textarea
                 ref={transcriptTextareaRef}
                 className={isRealtimeHighlightActive ? 'transcript-textarea realtime-overlay' : 'transcript-textarea'}
                 value={text}
-                onChange={(event) => setText(event.target.value)}
+                onChange={(event) => updateText(event.target.value)}
                 onScroll={syncTranscriptHighlightScroll}
                 rows={compactMode ? 4 : 10}
                 placeholder="点 Start 或用快捷键开始说话。"
@@ -820,7 +717,7 @@ function App() {
             <button onClick={() => void handlePostProcess()} disabled={isBusy}>Post-process</button>
             <button onClick={() => void writeClipboard(text, 'Transcript')} disabled={!text.trim()}>Copy T</button>
             <button onClick={() => void writeClipboard(processedText, 'Processed text')} disabled={!processedText.trim()}>Copy P</button>
-            <button onClick={() => { setText(''); setProcessedText('') }} disabled={isBusy || (!text && !processedText)}>Clear</button>
+            <button onClick={clearText} disabled={isBusy || (!text && !processedText)}>Clear</button>
           </div>
         ) : null}
 
@@ -856,7 +753,7 @@ function App() {
             <div className="grid two">
               <label>
                 <span>Mode</span>
-                <select value={mode} onChange={(event) => setMode(event.target.value as Mode)}>
+                <select value={mode} onChange={(event) => setMode(event.target.value as Mode)} disabled={settingsDisabled}>
                   <option value="local">Local Dictation</option>
                   <option value="elevenlabs-realtime">ElevenLabs Realtime</option>
                   <option value="elevenlabs-batch">ElevenLabs Batch</option>
@@ -864,7 +761,7 @@ function App() {
               </label>
               <label>
                 <span>Language</span>
-                <select value={language} onChange={(event) => setLanguage(event.target.value)}>
+                <select value={language} onChange={(event) => setLanguage(event.target.value)} disabled={settingsDisabled}>
                   {LANGUAGES.map((item) => <option key={item.label} value={item.value}>{item.label}</option>)}
                 </select>
               </label>
@@ -873,16 +770,16 @@ function App() {
             {needsApiKey ? (
               <label>
                 <span>ElevenLabs API Key</span>
-                <input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="sk_..." />
+                <input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="sk_..." disabled={settingsDisabled} />
                 <small className="field-help">仅保存在当前浏览器本地 IndexedDB，请求会直接从浏览器发送到 ElevenLabs。</small>
               </label>
             ) : null}
 
             <div className="grid two toggles-grid">
-              <label className="toggle-row"><input type="checkbox" checked={autoCopyTranscript} onChange={(event) => setAutoCopyTranscript(event.target.checked)} /><span>Auto copy transcript after stop</span></label>
-              <label className="toggle-row"><input type="checkbox" checked={autoCopyProcessed} onChange={(event) => setAutoCopyProcessed(event.target.checked)} /><span>Auto copy processed text</span></label>
-              <label className="toggle-row"><input type="checkbox" checked={shortcutsEnabled} onChange={(event) => setShortcutsEnabled(event.target.checked)} /><span>Enable recording shortcut</span></label>
-              <label className="toggle-row"><input type="checkbox" checked={compactMode} onChange={(event) => setCompactMode(event.target.checked)} /><span>Use mini floating-window layout</span></label>
+              <label className="toggle-row"><input type="checkbox" checked={autoCopyTranscript} onChange={(event) => setAutoCopyTranscript(event.target.checked)} disabled={settingsDisabled} /><span>Auto copy transcript after stop</span></label>
+              <label className="toggle-row"><input type="checkbox" checked={autoCopyProcessed} onChange={(event) => setAutoCopyProcessed(event.target.checked)} disabled={settingsDisabled} /><span>Auto copy processed text</span></label>
+              <label className="toggle-row"><input type="checkbox" checked={shortcutsEnabled} onChange={(event) => setShortcutsEnabled(event.target.checked)} disabled={settingsDisabled} /><span>Enable recording shortcut</span></label>
+              <label className="toggle-row"><input type="checkbox" checked={compactMode} onChange={(event) => setCompactMode(event.target.checked)} disabled={settingsDisabled} /><span>Use mini floating-window layout</span></label>
             </div>
 
             <div className="section-divider" />

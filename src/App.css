@@ -193,10 +193,6 @@ textarea { resize: vertical; line-height: 1.55; }
   min-height: 100%;
 }
 
-.transcript-highlight-plain {
-  color: #202124;
-}
-
 .transcript-textarea {
   position: relative;
   background: transparent;

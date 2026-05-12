@@ -38,7 +38,13 @@ npm run build
 npm run preview
 ```
 
-## GitHub Pages 自动部署
+## 分支与 GitHub Pages 自动部署
+
+本仓库使用双分支工作流：
+
+- `develop`：默认开发与提交分支。
+- `main`：CD 发布分支。
+- GitHub Pages 工作流只监听 `main` 的 push。
 
 仓库已包含工作流：
 
@@ -49,7 +55,8 @@ npm run preview
 1. 将仓库推送到 GitHub。
 2. 打开 **Settings -> Pages**。
 3. 将 **Source** 设为 **GitHub Actions**。
-4. 推送到 `main` 分支，或手动运行工作流。
+4. 将普通改动提交到 `develop`。
+5. 发布时将 `develop` 合并或快进到 `main`，再推送 `main` 触发部署；也可以手动运行工作流。
 
 ### 说明
 

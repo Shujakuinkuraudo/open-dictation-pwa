@@ -25,8 +25,11 @@ GitHub Actions uses Node.js 22 and runs `npm ci` followed by `npm run build`.
 ## Repository Layout
 
 - `src/App.tsx`: main app state, dictation flows, transcript editing, LLM post-processing, PWA debug UI.
+- `src/api.ts`: browser-side ElevenLabs and OpenAI-compatible API helpers.
 - `src/App.css`: app layout and component styling.
 - `src/index.css`: global page/root styles.
+- `src/settingsStore.ts`: IndexedDB settings load/save helpers and defaults.
+- `src/types.ts`: shared app and settings types.
 - `src/hooks/usePWAInstall.ts`: PWA install prompt and standalone detection logic.
 - `src/components/InstallPrompt.tsx`: install prompt UI.
 - `src/sw.ts`: source service worker for `vite-plugin-pwa` injectManifest builds.
