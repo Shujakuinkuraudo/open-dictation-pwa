@@ -194,11 +194,16 @@ textarea { resize: vertical; line-height: 1.55; }
 }
 
 .transcript-textarea {
+  display: block;
   position: relative;
-  background: transparent;
+  background: #fff;
+  background-clip: padding-box;
+  overflow: auto;
+  scrollbar-gutter: stable;
 }
 
 .transcript-editor.realtime-active .transcript-textarea {
+  background: transparent;
   color: transparent;
   caret-color: #202124;
 }
