@@ -27,25 +27,25 @@ button, input, select, textarea { font: inherit; }
 }
 
 .compact-card {
-  width: min(560px, calc(100vw - 8px));
+  width: min(500px, calc(100vw - 4px));
   margin: 0;
-  border-radius: 24px;
+  border-radius: 20px;
   backdrop-filter: blur(16px);
   position: sticky;
-  bottom: 8px;
+  bottom: 4px;
   background: rgba(255, 255, 255, 0.98);
   box-shadow: 0 12px 32px rgba(60, 64, 67, 0.16);
   border: 1px solid #d2e3fc;
-  padding: 14px;
+  padding: 10px;
 }
 
 .compact-card .header-row {
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .compact-card .header-row h1 {
-  font-size: 20px;
+  font-size: 18px;
   margin-bottom: 0;
 }
 
@@ -58,19 +58,19 @@ button, input, select, textarea { font: inherit; }
 .compact-card .header-actions button,
 .compact-card .primary-toolbar button,
 .compact-card .toolbar button {
-  padding: 8px 12px;
-  min-height: 38px;
-  font-size: 13px;
+  padding: 6px 8px;
+  min-height: 34px;
+  font-size: 12px;
 }
 
 .compact-card .top-status-row {
-  margin: 6px 0 12px;
+  margin: 4px 0 8px;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
 }
 
 .compact-card label {
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .compact-card label > span {
@@ -78,15 +78,17 @@ button, input, select, textarea { font: inherit; }
   font-size: 12px;
 }
 
+.compact-card input,
+.compact-card select,
 .compact-card textarea {
-  border-radius: 16px;
-  padding: 10px 12px;
+  border-radius: 14px;
+  padding: 8px 10px;
   font-size: 13px;
 }
 
 .compact-card .transcript-highlight {
-  border-radius: 16px;
-  padding: 10px 12px;
+  border-radius: 14px;
+  padding: 8px 10px;
   font-size: 13px;
 }
 
@@ -108,7 +110,7 @@ button, input, select, textarea { font: inherit; }
 .compact-card .compact-panels {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 4px;
+  gap: 2px;
 }
 
 .compact-card .section-divider,
@@ -688,7 +690,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 
 .compact-card .toolbar {
-  gap: 10px;
+  gap: 6px;
 }
 
 .compact-card .primary-toolbar {
@@ -700,7 +702,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .compact-card .toolbar:not(.primary-toolbar) {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 6px;
 }
 
 .compact-card .toolbar:not(.primary-toolbar) button {
@@ -712,7 +714,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 
 .compact-card .badge {
-  padding: 6px 14px;
+  padding: 5px 10px;
+  font-size: 12px;
 }
 
 .compact-card label > span {
@@ -720,17 +723,21 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 
 .compact-template-select {
-  margin: 8px 0;
+  margin: 6px 0;
 }
 
 .compact-card textarea {
-  min-height: 88px;
+  min-height: 68px;
 }
 
 @media (max-width: 720px) {
   .compact-card .primary-toolbar,
   .compact-card .toolbar:not(.primary-toolbar) {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .compact-card .toolbar.compact-topbar {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .template-panel-head,
@@ -747,11 +754,11 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .compact-topbar,
 .compact-bottombar {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
-.compact-topbar {
-  grid-template-columns: 1.15fr 1fr 0.9fr;
+.compact-card .toolbar.compact-topbar {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   align-items: center;
 }
 
@@ -763,8 +770,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .compact-bottombar button {
   min-width: 0;
   width: 100%;
-  padding: 8px 12px;
-  font-size: 12px;
+  padding: 6px 4px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -812,21 +819,21 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .compact-shortcuts {
   display: flex;
-  gap: 6px;
-  margin: 6px 0 10px;
+  gap: 4px;
+  margin: 4px 0 6px;
   overflow-x: auto;
-  padding-bottom: 2px;
+  padding-bottom: 1px;
   scrollbar-width: thin;
 }
 
 .compact-shortcut-chip {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 118px;
+  align-items: center;
+  gap: 6px;
+  min-width: 132px;
   flex: 0 0 auto;
-  padding: 8px 10px;
-  border-radius: 14px;
+  padding: 5px 8px;
+  border-radius: 12px;
   border: 1px solid #e3e8ee;
   background: #f8fafd;
 }
@@ -834,16 +841,17 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .compact-shortcut-chip span {
   font-size: 11px;
   color: #5f6368;
+  white-space: nowrap;
 }
 
 .compact-shortcut-chip code {
   width: fit-content;
   max-width: 100%;
-  padding: 3px 7px;
+  padding: 2px 6px;
   border-radius: 999px;
   background: #efe8ff;
   color: #5b3db5;
-  font-size: 11px;
+  font-size: 10px;
   white-space: nowrap;
 }
 

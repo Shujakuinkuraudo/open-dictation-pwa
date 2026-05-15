@@ -51,6 +51,15 @@ npm ci
 npm run dev
 ```
 
+## 快捷键
+
+- `Ctrl/⌘ + Shift + Space`：录音开关
+- `Ctrl/⌘ + Shift + P`：使用当前模板生成结果
+- `Ctrl/⌘ + Shift + C`：快速复制
+- `Ctrl/⌘ + Shift + X`：清空 Transcript 和 Processed Text
+- `Ctrl/⌘ + Shift + M`：切换 Mini mode
+- `Esc`：停止录音
+
 ## 构建
 
 ```bash

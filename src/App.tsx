@@ -45,6 +45,7 @@ const SHORTCUTS = [
   { label: '录音开关', combo: 'Ctrl/⌘ + Shift + Space' },
   { label: '后处理', combo: 'Ctrl/⌘ + Shift + P' },
   { label: '快速复制', combo: 'Ctrl/⌘ + Shift + C' },
+  { label: '清空文本', combo: 'Ctrl/⌘ + Shift + X' },
   { label: '切换胶囊模式', combo: 'Ctrl/⌘ + Shift + M' },
   { label: '停止录音', combo: 'Esc' },
 ]
@@ -628,6 +629,11 @@ function App() {
         void writeClipboard(processedText || text, processedText ? 'Processed text' : 'Transcript')
         return
       }
+      if (event.code === 'KeyX') {
+        event.preventDefault()
+        if (!isBusy) clearText()
+        return
+      }
       if (event.code === 'KeyM') {
         event.preventDefault()
         toggleCompactMode()
@@ -635,7 +641,7 @@ function App() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [handlePostProcess, isBusy, processedText, shortcutsEnabled, stopCurrent, text, toggleCompactMode, toggleRecording, writeClipboard])
+  }, [clearText, handlePostProcess, isBusy, processedText, shortcutsEnabled, stopCurrent, text, toggleCompactMode, toggleRecording, writeClipboard])
 
   useEffect(() => {
     const checkSw = async () => {
@@ -754,6 +760,7 @@ function App() {
               <button onClick={stopCurrent} disabled={stopDisabled}>Stop</button>
               <button onClick={() => void handlePostProcess()} disabled={isBusy || !text.trim() || !selectedTemplate}>Generate</button>
               <button onClick={() => void writeClipboard(processedText || text, processedText ? 'Processed text' : 'Transcript')} disabled={!(processedText || text).trim()}>Copy</button>
+              <button onClick={clearText} disabled={isBusy || (!text && !processedText)}>Clear</button>
             </div>
             <label className="compact-template-select">
               <span>Template</span>
@@ -875,7 +882,7 @@ function App() {
                 value={text}
                 onChange={(event) => updateText(event.target.value)}
                 onScroll={syncTranscriptHighlightScroll}
-                rows={compactMode ? 4 : 10}
+                rows={compactMode ? 3 : 10}
                 placeholder="点 Start 或用快捷键开始说话。"
               />
             </div>
@@ -883,7 +890,7 @@ function App() {
 
           <label>
             <span>Processed Text</span>
-            <textarea value={processedText} onChange={(event) => setProcessedText(event.target.value)} rows={compactMode ? 3 : 8} placeholder="LLM 后处理结果会显示在这里。" />
+            <textarea value={processedText} onChange={(event) => setProcessedText(event.target.value)} rows={compactMode ? 2 : 8} placeholder="LLM 后处理结果会显示在这里。" />
           </label>
         </div>
 
